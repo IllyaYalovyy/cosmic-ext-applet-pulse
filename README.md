@@ -27,6 +27,23 @@ to your scale, not a hardware fault. Gray with a dash means unavailable. The fil
 height carries the same information as color. Vertical panels wrap cores to fit the panel width. Very high core counts can occupy substantial horizontal panel space;
 CPU can be hidden independently.
 
+## Fedora RPM
+
+Download the Fedora RPM and `SHA256SUMS` from
+[GitHub Releases](https://github.com/IllyaYalovyy/cosmic-ext-applet-pulse/releases).
+The initial RPM targets Fedora 45 x86_64. Verify the downloaded RPM's checksum,
+then install it using DNF:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+sudo dnf install ./cosmic-ext-applet-pulse-0.2.0-1.fc45.x86_64.rpm
+```
+
+Add **Pulse** in COSMIC Settings → Desktop → Panel or Dock → Applets. An already
+running instance may need to be removed from the panel and added again after an
+upgrade. These are upstream RPMs, not packages from Fedora's official repositories.
+See [the manual release guide](packaging/README.md) for building and publishing.
+
 ## Build and install
 
 Requires Linux, Rust 1.95+, a COSMIC session, and the development packages for
@@ -70,3 +87,8 @@ counter reset behavior and elapsed-time rates. Hardware-specific GPU behavior an
 panel placement require a real COSMIC session on the target hardware.
 
 Support development through [GitHub Sponsors](https://github.com/sponsors/IllyaYalovyy).
+
+Every coherent change set increments the version: major for incompatible changes,
+minor for new compatible features, patch for fixes and maintenance (including docs).
+Update Cargo.toml, Cargo.lock, AppStream metadata and [CHANGELOG.md](CHANGELOG.md)
+together. This policy also applies before 1.0. Releases are manual; no CI/CD is set up.
