@@ -21,6 +21,9 @@
   </provides>
   <supports><control>keyboard</control><control>pointing</control></supports>
   <releases>
+    <release version="0.3.0" date="2026-11-08">
+      <description><p>Add compact CPU bars, CPU history with busiest-core tracking, and sample-driven peak afterglow.</p></description>
+    </release>
     <release version="0.2.0" date="2026-11-08">
       <description><p>Add manual Fedora RPM distribution and versioned changes.</p></description>
     </release>

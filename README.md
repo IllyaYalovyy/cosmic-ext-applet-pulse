@@ -2,7 +2,7 @@
 
 A configurable Rust resource monitor for the COSMIC panel and dock. Each resource
 has an icon and narrow vertical meters; CPU has one thin bar per logical core.
-Click to open text readings, About, System Monitor and a donation link. All settings persist through cosmic-config
+Click to open readings, graph controls, About, System Monitor and a donation link. All settings persist through cosmic-config
 and external changes apply live. No root privileges or monitoring daemon needed.
 
 ## Readings
@@ -27,6 +27,44 @@ to your scale, not a hardware fault. Gray with a dash means unavailable. The fil
 height carries the same information as color. Vertical panels wrap cores to fit the panel width. Very high core counts can occupy substantial horizontal panel space;
 CPU can be hidden independently.
 
+## Graphs (0.3.0)
+
+Choose **Cores**, **History**, or **Both** from the popup's **CPU graph** controls.
+Cores remains the default. At small panel sizes the SVG geometry matches its actual
+widget size: thin core bars have a one-pixel gap and no hidden aspect-ratio padding.
+History scrolls from right to left over the last two minutes:
+
+- The filled area and solid trace show average utilization across logical CPUs.
+- The thin dashed trace and latest-point marker show the busiest logical CPU.
+  One core at 100% therefore produces a red high trace even if the average is low.
+- The popup and hover summary include both average and busiest-core percentages.
+
+**Peak afterglow** retains a faint colored trail and cap above falling RAM, swap,
+network, disk and GPU bars. The previous peak fades over eight seconds; a new high
+renews it. At slow polling rates, its lifetime is at least two sampling periods so
+one falling sample still shows the trail without extra wakeups. Unavailable metrics clear their trails. Turning it off removes trails
+immediately. Both popup controls save automatically.
+
+Efficiency: graphs update only with sensor samples (two seconds by default), never
+on an animation timer. Peak fading therefore advances in sample-sized steps.
+There are no blur filters, background animation tasks, new crates, or extra sensor
+reads. Peaks shorter than the sampling interval can still be missed. History is bounded to 121 points; SVG/icon handles are cached and reused
+between changes. Sampling pauses, failures and CPU topology changes clear obsolete
+history. Changing interface/mount/rate scales clears the old peak references.
+
+Additional cosmic-config keys (same `v1` directory; existing preferences survive):
+
+| Key | Default | Allowed values |
+| --- | --- | --- |
+| `cpu_graph` | `Cores` | `Cores`, `History`, `Both` (RON enum, unquoted) |
+| `peak_glow` | `true` | `true`, `false` |
+| `glow_seconds` | `8` | 1–60 seconds |
+| `history_seconds` | `120` | 30–120 seconds |
+| `history_width` | `64` | 32–160 logical pixels (horizontal panel) |
+
+Vertical panels wrap core bars to their width and use a narrow, taller history
+chart. Graph controls do not change the sampling cadence.
+
 ## Fedora RPM
 
 Download the Fedora RPM and `SHA256SUMS` from
@@ -36,7 +74,7 @@ then install it using DNF:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-sudo dnf install ./cosmic-ext-applet-pulse-0.2.0-1.fc45.x86_64.rpm
+sudo dnf install ./cosmic-ext-applet-pulse-0.3.0-1.fc45.x86_64.rpm
 ```
 
 Add **Pulse** in COSMIC Settings → Desktop → Panel or Dock → Applets. An already
@@ -92,3 +130,8 @@ Every coherent change set increments the version: major for incompatible changes
 minor for new compatible features, patch for fixes and maintenance (including docs).
 Update Cargo.toml, Cargo.lock, AppStream metadata and [CHANGELOG.md](CHANGELOG.md)
 together. This policy also applies before 1.0. Releases are manual; no CI/CD is set up.
+
+For graph development, `cargo test benchmark_graph_preparation -- --ignored --nocapture`
+measures CPU-side graph preparation and cached view lookup (not full renderer/GPU
+or sensor cost). `PULSE_PREVIEW_DIR=/tmp/pulse-preview cargo test export_graph_previews
+-- --ignored` exports SVG examples from the production renderer.

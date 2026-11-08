@@ -1,6 +1,6 @@
 use crate::{
     App, Message,
-    config::Settings,
+    config::CpuGraph,
     metrics::{bytes, percent},
 };
 use cosmic::{
@@ -15,6 +15,7 @@ use cosmic::{
 
 /// One resource and its panel meters and textual reading.
 struct Group {
+    key: String,
     label: String,
     icon: &'static str,
     values: Vec<Option<f32>>,
@@ -52,9 +53,10 @@ impl App {
                 (0, Some(s)) => (
                     s.cpus.iter().copied().map(Some).collect(),
                     format!(
-                        "{} logical CPUs · {:.0}% average",
+                        "{} logical CPUs · {:.0}% average · {:.0}% busiest core",
                         s.cpus.len(),
-                        s.cpus.iter().sum::<f32>() / s.cpus.len().max(1) as f32
+                        s.cpus.iter().sum::<f32>() / s.cpus.len().max(1) as f32,
+                        s.cpus.iter().copied().fold(0.0, f32::max)
                     ),
                 ),
                 (1, Some(s)) => (vec![percent(s.ram.0, s.ram.1)], capacity(s.ram)),
@@ -111,8 +113,9 @@ impl App {
                     if s.gpus.is_empty() {
                         (vec![None; 2], "GPU telemetry unavailable".into())
                     } else {
-                        for gpu in &s.gpus {
+                        for (index, gpu) in s.gpus.iter().enumerate() {
                             groups.push(Group {
+                                key: format!("gpu:{index}:{}", gpu.name),
                                 label: gpu.name.clone(),
                                 icon,
                                 values: vec![gpu.busy, gpu.memory.and_then(|(u, t)| percent(u, t))],
@@ -133,6 +136,11 @@ impl App {
                 _ => (vec![None], "Collecting first sample…".into()),
             };
             groups.push(Group {
+                key: if index == 0 {
+                    "cpu".into()
+                } else {
+                    format!("resource:{index}")
+                },
                 label: label.into(),
                 icon,
                 values,
@@ -141,30 +149,50 @@ impl App {
         }
         groups
     }
+    pub fn record_graph_sample(&mut self, now: std::time::Instant) {
+        let groups = self.groups().into_iter().map(|g| (g.key, g.values));
+        let cpus = self
+            .snapshot
+            .as_deref()
+            .map(|s| s.cpus.as_slice())
+            .unwrap_or_default();
+        self.graphs.observe(cpus, groups, now, &self.settings);
+    }
     pub fn panel(&self) -> Element<'_, Message> {
         let horizontal = self.core.applet.is_horizontal();
         let size = f32::from(self.core.applet.suggested_size(true).0);
-        let units: Vec<Element<'_, Message>> = self
-            .groups()
+        let groups = self.groups();
+        let summary = groups
+            .iter()
+            .map(|g| format!("{}: {}", g.label, g.detail))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let units: Vec<Element<'_, Message>> = groups
             .into_iter()
             .map(|g| {
                 let mut children = Vec::new();
                 if self.settings.icons {
                     children.push(resource_icon(g.icon, size));
                 }
-                let wrap = if horizontal {
-                    g.values.len().max(1)
-                } else {
-                    (size / 9.0).floor().max(1.0) as usize
-                };
-                let rows = g
-                    .values
-                    .chunks(wrap)
-                    .map(|values| meter(values, &self.settings, size));
-                children.push(widget::Column::with_children(rows).spacing(2).into());
+                if g.key != "cpu" || self.settings.cpu_graph != CpuGraph::History {
+                    children.push(graph_image(self.graphs.meter(
+                        &g.key,
+                        &g.values,
+                        &self.settings,
+                        size,
+                        !horizontal,
+                    )));
+                }
+                if g.key == "cpu" && self.settings.cpu_graph != CpuGraph::Cores {
+                    children.push(graph_image(self.graphs.history(
+                        &self.settings,
+                        size,
+                        !horizontal,
+                    )));
+                }
                 if horizontal {
                     widget::Row::with_children(children)
-                        .spacing(4)
+                        .spacing((size / 6.0).max(2.0))
                         .align_y(Vertical::Center)
                         .into()
                 } else {
@@ -178,7 +206,9 @@ impl App {
         let strip: Element<'_, Message> = if units.is_empty() {
             resource_icon("processor-symbolic", size)
         } else if horizontal {
-            widget::Row::with_children(units).spacing(10).into()
+            widget::Row::with_children(units)
+                .spacing((size / 3.0).max(4.0))
+                .into()
         } else {
             widget::Column::with_children(units).spacing(10).into()
         };
@@ -192,12 +222,6 @@ impl App {
             .padding(padding)
             .class(cosmic::theme::Button::AppletIcon)
             .on_press(Message::TogglePopup);
-        let summary = self
-            .groups()
-            .iter()
-            .map(|g| format!("{}: {}", g.label, g.detail))
-            .collect::<Vec<_>>()
-            .join("\n");
         let tooltip = self.core.applet.applet_tooltip(
             button,
             if summary.is_empty() {
@@ -216,7 +240,10 @@ impl App {
             .spacing(12)
             .padding(16)
             .push(widget::text::title3("Pulse"));
-        if let Some(error) = &self.error {
+        for error in [self.error.as_ref(), self.settings_error.as_ref()]
+            .into_iter()
+            .flatten()
+        {
             content = content.push(widget::text(error));
         }
         for group in self.groups() {
@@ -224,6 +251,29 @@ impl App {
                 .push(widget::text::heading(group.label))
                 .push(widget::text(group.detail));
         }
+        let choices = [
+            (CpuGraph::Cores, "Cores"),
+            (CpuGraph::History, "History"),
+            (CpuGraph::Both, "Both"),
+        ];
+        let buttons = choices.into_iter().map(|(mode, label)| {
+            widget::button::text(if mode == self.settings.cpu_graph {
+                format!("✓ {label}")
+            } else {
+                label.into()
+            })
+            .on_press(Message::CpuGraph(mode))
+            .into()
+        });
+        let explanation = "History: filled area = average; dashed line = busiest core. Newest samples are on the right.";
+        content = content
+            .push(widget::text::heading("CPU graph"))
+            .push(widget::Row::with_children(buttons).spacing(4))
+            .push(widget::text::caption(explanation))
+            .push(widget::settings::item(
+                "Peak afterglow",
+                widget::toggler(self.settings.peak_glow).on_toggle(Message::PeakGlow),
+            ));
         content = content
             .push(widget::button::text("Open System Monitor").on_press(Message::OpenMonitor))
             .push(widget::text::heading("About"))
@@ -242,6 +292,24 @@ impl App {
 
 /// Embedded outline marks render independently of the installed icon theme.
 fn resource_icon(name: &str, size: f32) -> Element<'static, Message> {
+    static ICONS: [std::sync::OnceLock<Handle>; 6] = [const { std::sync::OnceLock::new() }; 6];
+    let index = match name {
+        "processor-symbolic" => 0,
+        "memory-symbolic" => 1,
+        "swap-symbolic" => 2,
+        "network-wired-symbolic" => 3,
+        "video-display-symbolic" => 4,
+        _ => 5,
+    };
+    let handle = ICONS[index].get_or_init(|| make_icon(name));
+    widget::svg(handle.clone())
+        .symbolic(true)
+        .width(Length::Fixed(size))
+        .height(Length::Fixed(size))
+        .into()
+}
+
+fn make_icon(name: &str) -> Handle {
     let shape = match name {
         "processor-symbolic" => {
             r#"<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4m6-4v4M9 18v4m6-4v4M2 9h4m-4 6h4m12-6h4m-4 6h4"/>"#
@@ -261,40 +329,13 @@ fn resource_icon(name: &str, size: f32) -> Element<'static, Message> {
     let svg = format!(
         r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{shape}</g></svg>"##
     );
-    widget::svg(Handle::from_memory(svg.into_bytes()))
-        .symbolic(true)
-        .width(Length::Fixed(size))
-        .height(Length::Fixed(size))
-        .into()
+    Handle::from_memory(svg.into_bytes())
 }
 
-/// Rounded tracks fill upward, retaining a visible marker for unavailable readings.
-fn meter<'a>(values: &[Option<f32>], settings: &Settings, height: f32) -> Element<'a, Message> {
-    let width = values.len().max(1) * 9;
-    let mut svg = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="24" viewBox="0 0 {width} 24">"#
-    );
-    for (index, value) in values.iter().enumerate() {
-        let x = index * 9;
-        let color = settings.color(*value);
-        let fill = value.unwrap_or(0.0).clamp(0.0, 100.0) * 0.24;
-        svg.push_str(&format!(
-            r#"<rect x="{x}" width="7" height="24" rx="3" fill="{color}" opacity="0.25"/>"#
-        ));
-        if value.is_some() {
-            svg.push_str(&format!(
-                r#"<rect x="{x}" y="{}" width="7" height="{}" rx="3" fill="{color}"/>"#,
-                24.0 - fill.max(1.0),
-                fill.max(1.0)
-            ));
-        } else {
-            svg.push_str(&format!(r#"<path d="M{x} 12h7" stroke="{color}"/>"#));
-        }
-    }
-    svg.push_str("</svg>");
-    widget::svg(Handle::from_memory(svg.into_bytes()))
-        .width(Length::Fixed(width as f32))
-        .height(Length::Fixed(height))
+fn graph_image(image: crate::graphs::Image) -> Element<'static, Message> {
+    widget::svg(image.handle)
+        .width(Length::Fixed(image.width))
+        .height(Length::Fixed(image.height))
         .into()
 }
 
@@ -360,5 +401,26 @@ mod tests {
         assert_eq!(app.groups()[0].label, "RAM");
         app.settings.visible = vec![false; 6];
         assert!(app.groups().is_empty());
+    }
+    #[test]
+    fn popup_graph_controls_appear_once_even_with_multiple_or_hidden_resources() {
+        use cosmic::iced::advanced::widget::{Tree, tree::Tag};
+        let reference: Element<'_, Message> = widget::button::text("Example")
+            .on_press(Message::Donate)
+            .into();
+        let button_tag = reference.as_widget().tag();
+        fn count(tree: &Tree, tag: Tag) -> usize {
+            usize::from(tree.tag == tag)
+                + tree
+                    .children
+                    .iter()
+                    .map(|child| count(child, tag))
+                    .sum::<usize>()
+        }
+        let mut app = app();
+        // Three display modes, System Monitor and Donate, irrespective of sensor count.
+        assert_eq!(count(&Tree::new(app.popup_view()), button_tag), 5);
+        app.settings.visible = vec![false; 6];
+        assert_eq!(count(&Tree::new(app.popup_view()), button_tag), 5);
     }
 }

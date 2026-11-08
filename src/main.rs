@@ -1,8 +1,9 @@
 mod config;
+mod graphs;
 mod metrics;
 mod view;
 
-use config::{APP_ID, Settings};
+use config::{APP_ID, CpuGraph, Settings};
 use cosmic::{
     cosmic_config::{self, CosmicConfigEntry},
     iced::{
@@ -13,16 +14,22 @@ use cosmic::{
     },
     prelude::*,
 };
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 /// Panel state and the latest asynchronously collected readings.
 #[derive(Default)]
 struct App {
     core: cosmic::Core,
+    graphs: graphs::Graphs,
+    store: Option<cosmic_config::Config>,
     popup: Option<Id>,
     settings: Settings,
     snapshot: Option<Arc<metrics::Snapshot>>,
     error: Option<String>,
+    settings_error: Option<String>,
 }
 /// Events from the panel, configuration watcher and sampling worker.
 #[derive(Clone, Debug)]
@@ -35,6 +42,8 @@ enum Message {
     Config(Settings),
     OpenMonitor,
     Donate,
+    CpuGraph(CpuGraph),
+    PeakGlow(bool),
 }
 impl cosmic::Application for App {
     type Executor = cosmic::executor::Default;
@@ -48,7 +57,7 @@ impl cosmic::Application for App {
         &mut self.core
     }
     fn init(core: cosmic::Core, _: ()) -> (Self, Task<cosmic::Action<Message>>) {
-        let (store, error) = match cosmic_config::Config::new(APP_ID, Settings::VERSION) {
+        let (store, settings_error) = match cosmic_config::Config::new(APP_ID, Settings::VERSION) {
             Ok(c) => (Some(c), None),
             Err(e) => (None, Some(format!("Settings cannot be saved: {e}"))),
         };
@@ -61,7 +70,8 @@ impl cosmic::Application for App {
             Self {
                 core,
                 settings,
-                error,
+                store,
+                settings_error,
                 ..Self::default()
             },
             Task::none(),
@@ -154,16 +164,30 @@ impl cosmic::Application for App {
             }
             Message::SamplingError => {
                 self.snapshot = None;
+                self.graphs.clear();
                 self.error = Some("Sampling stopped unexpectedly. Restart Pulse.".into());
                 return Task::none();
             }
             Message::Sample(snapshot) => {
                 self.snapshot = Some(snapshot);
+                self.record_graph_sample(Instant::now());
                 return Task::none();
             }
             Message::Config(settings) => {
-                self.settings = settings.normalized();
+                self.apply_settings(settings);
                 return Task::none();
+            }
+            Message::CpuGraph(mode) => {
+                let mut settings = self.settings.clone();
+                settings.cpu_graph = mode;
+                self.apply_settings(settings);
+                self.save_settings();
+            }
+            Message::PeakGlow(enabled) => {
+                let mut settings = self.settings.clone();
+                settings.peak_glow = enabled;
+                self.apply_settings(settings);
+                self.save_settings();
             }
             Message::OpenMonitor => {
                 let result = ["cosmic-monitor", "gnome-system-monitor"]
@@ -187,6 +211,32 @@ impl cosmic::Application for App {
     }
     fn style(&self) -> Option<cosmic::iced::theme::Style> {
         Some(cosmic::applet::style())
+    }
+}
+impl App {
+    fn apply_settings(&mut self, settings: Settings) {
+        let settings = settings.normalized();
+        if self.settings.interface != settings.interface
+            || self.settings.mount != settings.mount
+            || self.settings.network_mib != settings.network_mib
+            || self.settings.disk_mib != settings.disk_mib
+            || self.settings.peak_glow != settings.peak_glow
+        {
+            self.graphs.clear_peaks();
+        }
+        self.settings = settings;
+    }
+    fn save_settings(&mut self) {
+        self.settings_error = match &self.store {
+            Some(store) => self
+                .settings
+                .write_entry(store)
+                .err()
+                .map(|e| format!("Could not save settings: {e}")),
+            None => {
+                Some("Settings storage is unavailable; changes apply for this session only.".into())
+            }
+        };
     }
 }
 fn main() -> cosmic::iced::Result {
