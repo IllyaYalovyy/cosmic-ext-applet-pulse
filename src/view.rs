@@ -39,7 +39,7 @@ impl App {
         let definitions = [
             ("CPU", "processor-symbolic"),
             ("RAM", "memory-symbolic"),
-            ("Swap", "drive-harddisk-symbolic"),
+            ("Swap", "swap-symbolic"),
             ("Network ↓ ↑", "network-wired-symbolic"),
             ("Disk · space / R / W", "drive-harddisk-symbolic"),
             ("GPU", "video-display-symbolic"),
@@ -249,6 +249,7 @@ fn resource_icon(name: &str, size: f32) -> Element<'static, Message> {
         "memory-symbolic" => {
             r#"<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 9v6m5-6v6m5-6v6M7 18v3m5-3v3m5-3v3"/>"#
         }
+        "swap-symbolic" => r#"<path d="M4 8h16m-4-4 4 4-4 4M20 16H4m4-4-4 4 4 4"/>"#,
         "network-wired-symbolic" => r#"<path d="M7 3v17m-4-4 4 4 4-4M17 21V4m-4 4 4-4 4 4"/>"#,
         "video-display-symbolic" => {
             r#"<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M12 17v4m-5 0h10"/>"#
@@ -258,9 +259,10 @@ fn resource_icon(name: &str, size: f32) -> Element<'static, Message> {
         }
     };
     let svg = format!(
-        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="none" stroke="#65d69a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{shape}</g></svg>"##
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">{shape}</g></svg>"##
     );
     widget::svg(Handle::from_memory(svg.into_bytes()))
+        .symbolic(true)
         .width(Length::Fixed(size))
         .height(Length::Fixed(size))
         .into()
