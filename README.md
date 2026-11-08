@@ -21,7 +21,7 @@ and external changes apply live. No root privileges or monitoring daemon needed.
   counters. Intel and other drivers without these counters show unavailable;
   no privileged perf access is attempted. Shared GPU memory is not invented as VRAM.
 
-Green below 70%, yellow at 70%, red at 90%, configurable. Rates use configurable
+Green at or below 50%, yellow above 50% through 80%, red above 80%, configurable. Rates use configurable
 full scales (default network 100 MiB/s, disk 500 MiB/s); red means high load relative
 to your scale, not a hardware fault. Gray with a dash means unavailable. The fill
 height carries the same information as color. Vertical panels wrap cores to fit the panel width. Very high core counts can occupy substantial horizontal panel space;

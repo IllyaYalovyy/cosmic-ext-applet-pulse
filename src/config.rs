@@ -22,8 +22,8 @@ impl Default for Settings {
             visible: vec![true; 6],
             icons: true,
             interval: 2,
-            warning: 70,
-            critical: 90,
+            warning: 50,
+            critical: 80,
             network_mib: 100,
             disk_mib: 500,
             interface: String::new(),
@@ -44,8 +44,8 @@ impl Settings {
     }
     pub fn color(&self, value: Option<f32>) -> &'static str {
         match value {
-            Some(p) if p >= self.critical as f32 => "#f36675",
-            Some(p) if p >= self.warning as f32 => "#f4ce64",
+            Some(p) if p > self.critical as f32 => "#f36675",
+            Some(p) if p > self.warning as f32 => "#f4ce64",
             Some(_) => "#65d69a",
             None => "#8b919c",
         }
@@ -74,9 +74,15 @@ mod tests {
     #[test]
     fn colors_include_threshold_boundaries_and_unknown() {
         let s = Settings::default();
-        assert_eq!(s.color(Some(69.9)), "#65d69a");
-        assert_eq!(s.color(Some(70.0)), "#f4ce64");
-        assert_eq!(s.color(Some(90.0)), "#f36675");
+        for value in [0.0, 49.9, 50.0] {
+            assert_eq!(s.color(Some(value)), "#65d69a");
+        }
+        for value in [50.1, 79.9, 80.0] {
+            assert_eq!(s.color(Some(value)), "#f4ce64");
+        }
+        for value in [80.1, 100.0] {
+            assert_eq!(s.color(Some(value)), "#f36675");
+        }
         assert_eq!(s.color(None), "#8b919c");
     }
     #[test]
