@@ -1,0 +1,21 @@
+[package]
+name = "cosmic-ext-applet-pulse"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-only"
+description = "Configurable resource meters for the COSMIC panel and dock"
+
+[dependencies]
+libcosmic = { git = "https://github.com/pop-os/libcosmic", rev = "43a50cb6f5af18fa6cbea535fb46460a3c5cd573", default-features = false, features = ["applet", "tokio", "wayland", "winit", "dbus-config"] }
+serde = { version = "1", features = ["derive"] }
+sysinfo = { version = "0.39.6", default-features = false, features = ["system", "network", "disk"] }
+nvml-wrapper = "0.13"
+tokio = { version = "1", features = ["rt", "time", "sync"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[lints.rust]
+unsafe_code = "forbid"

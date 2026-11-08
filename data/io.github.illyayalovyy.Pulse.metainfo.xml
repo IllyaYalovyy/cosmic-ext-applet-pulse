@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.illyayalovyy.Pulse</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <developer id="io.github.illyayalovyy"><name>Illya Yalovyy</name></developer>
+  <name>Pulse</name>
+  <summary>Configurable resource meters for the COSMIC panel and dock</summary>
+  <description>
+    <p>Monitor each logical CPU, RAM, swap, network traffic, disk space and I/O,
+    and supported GPU utilization and memory with compact colored meters.</p>
+    <p>Configure visibility, refresh cadence, thresholds, bandwidth scales,
+    network interface and disk mount point through cosmic-config.</p>
+  </description>
+  <url type="homepage">https://github.com/IllyaYalovyy/cosmic-ext-applet-pulse</url>
+  <url type="donation">https://github.com/sponsors/IllyaYalovyy</url>
+  <launchable type="desktop-id">io.github.illyayalovyy.Pulse.desktop</launchable>
+  <provides>
+    <id>com.system76.CosmicApplet</id>
+    <binary>cosmic-ext-applet-pulse</binary>
+  </provides>
+  <supports><control>keyboard</control><control>pointing</control></supports>
+  <content_rating type="oars-1.1"/>
+</component>

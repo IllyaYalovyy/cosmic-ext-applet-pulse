@@ -1,0 +1,12 @@
+[Desktop Entry]
+Name=Pulse
+Comment=CPU, memory, network, disk and GPU meters
+Type=Application
+Exec=cosmic-ext-applet-pulse
+Icon=io.github.illyayalovyy.Pulse-symbolic
+Terminal=false
+NoDisplay=true
+Categories=System;Monitor;
+Keywords=CPU;RAM;Swap;Network;Disk;GPU;Monitor;
+StartupNotify=true
+X-CosmicApplet=true
