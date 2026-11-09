@@ -240,9 +240,13 @@ impl App {
             .spacing(12)
             .padding(16)
             .push(widget::text::title3("Pulse"));
-        for error in [self.error.as_ref(), self.settings_error.as_ref()]
-            .into_iter()
-            .flatten()
+        for error in [
+            self.error.as_ref(),
+            self.sampling_error.as_ref(),
+            self.settings_error.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
         {
             content = content.push(widget::text(error));
         }

@@ -32,10 +32,18 @@ pub fn percent(used: u64, total: u64) -> Option<f32> {
 }
 /// Converts a cumulative counter delta to a per-second rate.
 pub fn rate(current: u64, previous: u64, seconds: f64) -> f64 {
-    if seconds <= 0.0 {
+    if !seconds.is_finite() || seconds <= 0.0 {
         return 0.0;
     }
     current.saturating_sub(previous) as f64 / seconds
+}
+/// A newly discovered device establishes a baseline instead of reporting its lifetime traffic.
+fn counter_rates(current: (u64, u64), previous: Option<(u64, u64)>, seconds: f64) -> (f64, f64) {
+    let previous = previous.unwrap_or(current);
+    (
+        rate(current.0, previous.0, seconds),
+        rate(current.1, previous.1, seconds),
+    )
 }
 /// Formats bytes using binary units.
 pub fn bytes(value: f64) -> String {
@@ -94,13 +102,9 @@ impl Collector {
         for (name, data) in &self.networks {
             let current = (data.total_received(), data.total_transmitted());
             if name != "lo" {
-                let old = self.previous.get(name).copied().unwrap_or(current);
                 networks.insert(
                     name.clone(),
-                    (
-                        rate(current.0, old.0, elapsed),
-                        rate(current.1, old.1, elapsed),
-                    ),
+                    counter_rates(current, self.previous.get(name).copied(), elapsed),
                 );
             }
             self.previous.insert(name.clone(), current);
@@ -118,11 +122,7 @@ impl Collector {
                     .map(|p| p.to_string_lossy().into_owned());
                 let key = resolved.as_deref().unwrap_or(&device);
                 let read_write = counters.get(key).map(|current| {
-                    let old = self.disk_previous.get(key).unwrap_or(current);
-                    (
-                        rate(current.0, old.0, elapsed),
-                        rate(current.1, old.1, elapsed),
-                    )
+                    counter_rates(*current, self.disk_previous.get(key).copied(), elapsed)
                 });
                 (
                     d.mount_point().to_string_lossy().into_owned(),
@@ -223,7 +223,9 @@ mod tests {
     fn counters_handle_reset_and_elapsed_time() {
         assert_eq!(rate(300, 100, 2.0), 100.0);
         assert_eq!(rate(10, 300, 2.0), 0.0);
-        assert_eq!(rate(300, 100, 0.0), 0.0);
+        for elapsed in [0.0, -1.0, f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert_eq!(rate(300, 100, elapsed), 0.0);
+        }
     }
     #[test]
     fn capacity_handles_disabled_swap() {
@@ -237,5 +239,35 @@ mod tests {
         let parsed = parse_diskstats("252 0 dm-0 100 0 200 4 50 0 300 8 0 5 6\nmalformed");
         assert_eq!(parsed["/dev/dm-0"], (102400, 153600));
         assert_eq!(parsed.len(), 1);
+    }
+    #[test]
+    fn new_devices_start_at_zero_and_counters_reset_independently() {
+        assert_eq!(counter_rates((1_000_000, 500_000), None, 2.0), (0.0, 0.0));
+        assert_eq!(
+            counter_rates((500, 900), Some((100, 300)), 2.0),
+            (200.0, 300.0)
+        );
+        assert_eq!(
+            counter_rates((10, 900), Some((500, 300)), 2.0),
+            (0.0, 300.0)
+        );
+        assert_eq!(
+            counter_rates((500, 10), Some((100, 300)), 2.0),
+            (200.0, 0.0)
+        );
+    }
+    #[test]
+    fn malformed_diskstats_do_not_discard_other_devices() {
+        let parsed = parse_diskstats(concat!(
+            "8 0 sda 1 0 2 0 3 0 4 0 0 0 0 0 0 0\n",
+            "8 1 sda1 1 0 nope 0 3 0 4\n",
+            "8 2 sda2 1 0 18446744073709551615 0 3 0 4\n",
+            "8 3 sda3 1 0 2 0 3 0 18446744073709551615\n",
+            "8 4 sda4 1 0 2\n",
+            "259 0 nvme0n1 0 0 0 0 0 0 0\n",
+        ));
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed["/dev/sda"], (1024, 2048));
+        assert_eq!(parsed["/dev/nvme0n1"], (0, 0));
     }
 }

@@ -282,3 +282,109 @@ fn slow_polling_still_shows_one_falling_sample_without_extra_ticks() {
     );
     assert_eq!(g.peaks["ram"][0].unwrap().value, 20.0);
 }
+
+#[test]
+fn invalid_sensor_values_never_reach_svg_coordinates() {
+    let s = Settings::default();
+    let now = Instant::now();
+    for invalid in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let mut g = Graphs::default();
+        sample(&mut g, &[100.0], Some(100.0), now, &s);
+        sample(
+            &mut g,
+            &[invalid],
+            Some(invalid),
+            now + Duration::from_secs(2),
+            &s,
+        );
+        assert!(g.cpu.is_empty());
+        assert!(g.peaks["ram"][0].is_none());
+        let svg = g.meter_svg("ram", &[Some(invalid)], &s, 16.0, false).0;
+        assert!(!svg.contains("NaN") && !svg.contains("inf"));
+        assert!(svg.contains("#8b919c"));
+    }
+}
+
+#[test]
+fn history_expires_by_time_even_below_point_limit() {
+    let mut g = Graphs::default();
+    let now = Instant::now();
+    let s = Settings {
+        interval: 30,
+        ..Settings::default()
+    };
+    for i in 0..20 {
+        sample(&mut g, &[10.0], None, now + Duration::from_secs(i * 30), &s);
+    }
+    assert_eq!(g.cpu.len(), 5);
+    assert_eq!(g.cpu.front().unwrap().at, now + Duration::from_secs(450));
+}
+
+#[test]
+fn settings_and_resize_invalidate_cached_images_without_growing_cache() {
+    let mut g = Graphs::default();
+    let now = Instant::now();
+    let mut s = Settings::default();
+    sample(&mut g, &[75.0], Some(75.0), now, &s);
+    let original = g.meter("ram", &[Some(75.0)], &s, 16.0, false);
+    s.critical = 70;
+    let recolored = g.meter("ram", &[Some(75.0)], &s, 16.0, false);
+    assert_ne!(original.handle.id(), recolored.handle.id());
+    for size in 12..80 {
+        let image = g.meter("ram", &[Some(75.0)], &s, size as f32, false);
+        assert_eq!(image.height, size as f32);
+    }
+    assert_eq!(g.cache.borrow().len(), 1);
+}
+
+#[test]
+fn clearing_source_peaks_preserves_cpu_history_but_invalidates_images() {
+    let mut g = Graphs::default();
+    let s = Settings::default();
+    sample(&mut g, &[100.0], Some(100.0), Instant::now(), &s);
+    let _ = g.meter("ram", &[Some(100.0)], &s, 16.0, false);
+    g.clear_peaks();
+    assert!(g.peaks.is_empty());
+    assert!(g.cache.borrow().is_empty());
+    assert_eq!(g.cpu.len(), 1);
+}
+
+#[test]
+fn changing_meter_sources_or_scales_clears_trails_but_not_cpu_history() {
+    let defaults = Settings::default();
+    let variants = [
+        Settings {
+            interface: "eth0".into(),
+            ..defaults.clone()
+        },
+        Settings {
+            mount: "/home".into(),
+            ..defaults.clone()
+        },
+        Settings {
+            network_mib: 1,
+            ..defaults.clone()
+        },
+        Settings {
+            disk_mib: 1,
+            ..defaults.clone()
+        },
+        Settings {
+            peak_glow: false,
+            ..defaults.clone()
+        },
+    ];
+    for settings in variants {
+        let mut app = crate::App::default();
+        sample(
+            &mut app.graphs,
+            &[100.0],
+            Some(100.0),
+            Instant::now(),
+            &defaults,
+        );
+        app.apply_settings(settings);
+        assert!(app.graphs.peaks.is_empty());
+        assert_eq!(app.graphs.cpu.len(), 1);
+    }
+}

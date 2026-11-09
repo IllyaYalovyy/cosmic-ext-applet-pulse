@@ -130,6 +130,11 @@ mod tests {
             critical: 85,
             interface: "eth0".into(),
             mount: "/home".into(),
+            cpu_graph: CpuGraph::Both,
+            peak_glow: false,
+            glow_seconds: 12,
+            history_seconds: 60,
+            history_width: 96,
             ..Settings::default()
         };
         expected.write_entry(&store).unwrap();

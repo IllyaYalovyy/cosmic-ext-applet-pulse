@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1 — 2026-11-08
+
+- Clear sampler failure messages when readings resume without erasing other errors.
+- Share network/disk counter rate handling and reject invalid elapsed times.
+- Expand regression tests for counter resets, malformed diskstats, graph bounds/cache invalidation, missing sensors, and application state transitions.
+
 ## 0.3.0 — 2026-11-08
 
 - Fit CPU core bars to the actual panel size, removing excess SVG padding and tightening gaps.

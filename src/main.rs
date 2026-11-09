@@ -29,6 +29,7 @@ struct App {
     settings: Settings,
     snapshot: Option<Arc<metrics::Snapshot>>,
     error: Option<String>,
+    sampling_error: Option<String>,
     settings_error: Option<String>,
 }
 /// Events from the panel, configuration watcher and sampling worker.
@@ -165,10 +166,11 @@ impl cosmic::Application for App {
             Message::SamplingError => {
                 self.snapshot = None;
                 self.graphs.clear();
-                self.error = Some("Sampling stopped unexpectedly. Restart Pulse.".into());
+                self.sampling_error = Some("Sampling stopped unexpectedly. Restart Pulse.".into());
                 return Task::none();
             }
             Message::Sample(snapshot) => {
+                self.sampling_error = None;
                 self.snapshot = Some(snapshot);
                 self.record_graph_sample(Instant::now());
                 return Task::none();
@@ -248,3 +250,6 @@ fn main() -> cosmic::iced::Result {
     }
     cosmic::applet::run::<App>(())
 }
+
+#[cfg(test)]
+mod tests;
