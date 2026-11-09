@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.2 — 2026-11-09
+
+- Run quality checks and all headless debug/release tests in GitHub Actions.
+- Build and verify Fedora 45 RPMs for every push and pull request.
+- Publish immutable commit-named prereleases for successful main-branch pushes.
+- Include graph previews, packaged sensor smoke-test output and checksums in CI artifacts.
+- Fix shell syntax checks to inspect every script.
+
 ## 0.3.1 — 2026-11-08
 
 - Clear sampler failure messages when readings resume without erasing other errors.

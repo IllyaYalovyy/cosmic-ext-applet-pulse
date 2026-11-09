@@ -129,7 +129,15 @@ Support development through [GitHub Sponsors](https://github.com/sponsors/IllyaY
 Every coherent change set increments the version: major for incompatible changes,
 minor for new compatible features, patch for fixes and maintenance (including docs).
 Update Cargo.toml, Cargo.lock, AppStream metadata and [CHANGELOG.md](CHANGELOG.md)
-together. This policy also applies before 1.0. Releases are manual; no CI/CD is set up.
+together. This policy also applies before 1.0.
+
+GitHub Actions checks every branch push and pull request: formatting, strict Clippy,
+all debug/release tests (including graph previews and timing), metadata/script
+validation, a Fedora 45 x86_64 RPM build, and a packaged sensor smoke test. Build
+artifacts are retained for 30 days. Successful main-branch pushes also publish
+per-commit GitHub prereleases (`ci-<full SHA>`), without replacing stable releases.
+A multi-commit push builds its tip commit. Stable versioned releases remain explicit.
+See [packaging](packaging/README.md) for details and local reproduction.
 
 For graph development, `cargo test benchmark_graph_preparation -- --ignored --nocapture`
 measures CPU-side graph preparation and cached view lookup (not full renderer/GPU

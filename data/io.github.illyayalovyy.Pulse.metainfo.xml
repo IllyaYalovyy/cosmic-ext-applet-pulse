@@ -21,6 +21,9 @@
   </provides>
   <supports><control>keyboard</control><control>pointing</control></supports>
   <releases>
+    <release version="0.3.2" date="2026-11-09">
+      <description><p>Add automated tests, Fedora RPM builds and per-commit snapshot publishing.</p></description>
+    </release>
     <release version="0.3.1" date="2026-11-08">
       <description><p>Improve sampler error recovery and regression coverage for metrics, graphs and application state.</p></description>
     </release>

@@ -10,7 +10,9 @@
   CHANGELOG.md synchronized. The RPM version must come from Cargo.toml.
 - Run checks appropriate to the change. Run scripts/quality.sh for Rust changes
   and before a release. Build and inspect release artifacts before publishing.
-- Releases are manual. Do not introduce CI/CD unless explicitly requested.
+- CI tests and packages every push/PR; successful main pushes publish commit-named
+  prereleases. Stable versioned releases remain explicit. Keep publishing gated on
+  all checks, and never give pull-request jobs release credentials.
 - Commit only as Illya Yalovyy
   <1623643+IllyaYalovyy@users.noreply.github.com>. Never add Co-authored-by trailers
   or bypass hooks. Do not commit generated artifacts, credentials, or build caches.

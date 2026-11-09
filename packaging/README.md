@@ -1,8 +1,8 @@
-# Manual Fedora releases
+# Fedora builds and releases
 
 Start with an upstream RPM attached to a GitHub release. A COPR repository is a
 useful next step for automatic DNF updates and builds on multiple Fedora releases;
-no COPR project or CI/CD is configured here. The initial target is Fedora 45 x86_64.
+no COPR project is configured here. GitHub Actions builds and tests each push/PR. The initial target is Fedora 45 x86_64.
 Build on each supported Fedora release/architecture rather than assuming the
 binary is compatible with older glibc releases. ARM64 is permitted by the spec but
 must be built and tested separately before advertising support.
@@ -73,3 +73,33 @@ gh release create v<version> dist/<version>/* \
 
 Do not overwrite an existing tag or release. Correct a published build with a
 new patch version. Never include credentials or local paths in release artifacts.
+
+## Automated commit builds
+
+`.github/workflows/ci.yml` uses Fedora 45 and Rust 1.99.0 on x86_64. Official
+GitHub actions are pinned to commit IDs. Builds have read-only repository access;
+a separate publishing job receives contents-write only after every check passes.
+Pull requests never publish releases. The workflow uses GITHUB_TOKEN and needs no
+personal access token or signing secret.
+
+Every branch push (the tip commit for multi-commit pushes) and pull request builds
+an RPM and source archives, runs all 32 current tests in debug and release modes,
+validates metadata and SVG previews, and samples sensors with the extracted RPM.
+The graph timing test is diagnostic, not a flaky performance threshold. A workflow
+linter runs separately. Artifacts are retained for 30 days, including graph previews,
+source archives, sample output and checksums. Hardware GPU coverage and actual
+COSMIC panel/dock interaction still require manual testing.
+
+Main pushes publish `ci-<full SHA>` prereleases only after both jobs succeed. Each
+commit gets its own release; reruns do not overwrite published assets. Snapshot
+RPMs use `Release: 0.<run number>.git<short SHA>` so a stable RPM with `Release: 1`
+of the same package version sorts newer. These prereleases do not change GitHub's
+latest stable release. The version bump policy still applies; CI never creates
+version-bump commits. Stable `vX.Y.Z` releases use the manual workflow above.
+
+Local additional checks after building:
+
+```sh
+./scripts/ci-checks.sh
+./scripts/verify-release.sh
+```

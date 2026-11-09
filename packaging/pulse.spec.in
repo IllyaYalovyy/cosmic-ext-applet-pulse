@@ -4,7 +4,7 @@
 %global appid io.github.illyayalovyy.Pulse
 Name: cosmic-ext-applet-pulse
 Version: @VERSION@
-Release: 1%{?dist}
+Release: @RPM_RELEASE@%{?dist}
 Summary: Resource meters for the COSMIC panel and dock
 License: @LICENSE@
 URL: https://github.com/IllyaYalovyy/cosmic-ext-applet-pulse

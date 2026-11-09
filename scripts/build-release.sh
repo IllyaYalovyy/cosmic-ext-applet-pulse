@@ -12,6 +12,9 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 ./scripts/check-version.py
 ./scripts/quality.sh
+# CI snapshots sort below the stable RPM (Release: 1) for the same version.
+rpm_release=${PULSE_RPM_RELEASE:-1}
+[[ "$rpm_release" =~ ^[0-9]+([.][A-Za-z0-9]+)*$ ]] || { printf 'Invalid RPM release\n' >&2; exit 1; }
 version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
 name=cosmic-ext-applet-pulse
 appid=io.github.illyayalovyy.Pulse
@@ -57,12 +60,12 @@ if ! grep -q '^libc.so.6' "$work/elf-requires.txt"; then
     printf 'RPM ELF dependency scan returned no glibc requirement.\n' >&2
     exit 1
 fi
-python3 - "$version" "$license_expression" "$work/rpm/SPECS/pulse.spec" "$work/elf-requires.txt" <<'PY'
+python3 - "$version" "$license_expression" "$work/rpm/SPECS/pulse.spec" "$work/elf-requires.txt" "$rpm_release" <<'PY'
 from pathlib import Path
 import sys
 text = Path('packaging/pulse.spec.in').read_text()
 requires = '\n'.join('Requires: ' + line for line in Path(sys.argv[4]).read_text().splitlines())
-Path(sys.argv[3]).write_text(text.replace('@VERSION@', sys.argv[1]).replace('@LICENSE@', sys.argv[2]).replace('@ELF_REQUIRES@', requires))
+Path(sys.argv[3]).write_text(text.replace('@VERSION@', sys.argv[1]).replace('@LICENSE@', sys.argv[2]).replace('@ELF_REQUIRES@', requires).replace('@RPM_RELEASE@', sys.argv[5]))
 PY
 tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner -C "$work" -czf "$work/rpm/SOURCES/$name-$version-payload.tar.gz" "$name-$version"
 # PULSE_RPM_CONFIGDIR supports locally extracted build tools without a system install.
