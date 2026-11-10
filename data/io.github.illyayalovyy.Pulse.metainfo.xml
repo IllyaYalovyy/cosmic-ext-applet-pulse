@@ -21,6 +21,9 @@
   </provides>
   <supports><control>keyboard</control><control>pointing</control></supports>
   <releases>
+    <release version="0.3.3" date="2026-11-09">
+      <description><p>Fix missing afterglow on CPU core bars.</p></description>
+    </release>
     <release version="0.3.2" date="2026-11-09">
       <description><p>Add automated tests, Fedora RPM builds and per-commit snapshot publishing.</p></description>
     </release>

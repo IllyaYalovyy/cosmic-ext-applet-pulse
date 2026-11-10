@@ -47,7 +47,7 @@ impl Style {
             cpu,
             warning: settings.warning,
             critical: settings.critical,
-            glow: settings.peak_glow && !cpu,
+            glow: settings.peak_glow,
             glow_seconds: settings.glow_seconds.max(settings.interval * 2),
             history_seconds: settings.history_seconds,
             history_width: settings.history_width,
@@ -96,6 +96,7 @@ impl Graphs {
         self.cache.get_mut().clear();
         if self.core_count != cpus.len() {
             self.cpu.clear();
+            self.peaks.remove("cpu");
             self.core_count = cpus.len();
         }
         if !cpus.is_empty() && cpus.iter().all(|v| v.is_finite()) {
@@ -118,7 +119,7 @@ impl Graphs {
         }
         let mut next = BTreeMap::new();
         for (key, values) in meters {
-            if key == "cpu" || !settings.peak_glow {
+            if !settings.peak_glow {
                 continue;
             }
             let old = self.peaks.remove(&key).unwrap_or_default();
@@ -192,8 +193,7 @@ impl Graphs {
             svg.push_str(&format!(r#"<rect x="{x}" y="{top}" width="{bar}" height="{height}" rx="1" fill="{color}" opacity="0.20"/>"#));
             if let Some(value) = value {
                 let fill = (value * height / 100.0).max(1.0);
-                if key != "cpu"
-                    && settings.peak_glow
+                if settings.peak_glow
                     && let Some(p) = self
                         .peaks
                         .get(key)

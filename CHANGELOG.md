@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.3 — 2026-11-09
+
+- Fix missing afterglow on CPU core bars, sharing the existing sample-driven peak tracking and fade.
+- Clear CPU peaks when the core count changes and test per-core fading, rendering, and the glow toggle.
+
 ## 0.3.2 — 2026-11-09
 
 - Run quality checks and all headless debug/release tests in GitHub Actions.

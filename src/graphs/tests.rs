@@ -155,7 +155,10 @@ fn benchmark_graph_preparation() {
                 .collect();
             g.observe(
                 &cpus,
-                meters.clone(),
+                meters
+                    .clone()
+                    .into_iter()
+                    .chain([("cpu".into(), core_values.clone())]),
                 now + Duration::from_secs(frame as u64 * 2),
                 &s,
             );
@@ -387,4 +390,64 @@ fn changing_meter_sources_or_scales_clears_trails_but_not_cpu_history() {
         assert!(app.graphs.peaks.is_empty());
         assert_eq!(app.graphs.cpu.len(), 1);
     }
+}
+
+fn cpu_sample(g: &mut Graphs, cpus: &[f32], at: Instant, s: &Settings) {
+    g.observe(
+        cpus,
+        [("cpu".into(), cpus.iter().copied().map(Some).collect())],
+        at,
+        s,
+    );
+}
+
+#[test]
+fn cpu_bars_retain_independent_peaks_and_fade_without_extra_ticks() {
+    let mut g = Graphs::default();
+    let now = Instant::now();
+    let s = Settings::default();
+    cpu_sample(&mut g, &[100.0, 60.0], now, &s);
+    cpu_sample(&mut g, &[20.0, 80.0], now + Duration::from_secs(2), &s);
+    assert_eq!(g.peaks["cpu"][0].unwrap().value, 100.0);
+    assert_eq!(g.peaks["cpu"][1].unwrap().value, 80.0);
+    for vertical in [false, true] {
+        let svg = g
+            .meter_svg("cpu", &[Some(20.0), Some(80.0)], &s, 16.0, vertical)
+            .0;
+        assert_eq!(svg.matches("opacity=\"0.600\"").count(), 1);
+        assert!(svg.contains("stroke=\"#f36675\""));
+    }
+    cpu_sample(&mut g, &[20.0, 80.0], now + Duration::from_secs(6), &s);
+    let svg = g
+        .meter_svg("cpu", &[Some(20.0), Some(80.0)], &s, 16.0, false)
+        .0;
+    assert!(svg.contains("opacity=\"0.200\""));
+    cpu_sample(&mut g, &[20.0, 80.0], now + Duration::from_secs(8), &s);
+    assert_eq!(g.peaks["cpu"][0].unwrap().value, 20.0);
+}
+
+#[test]
+fn cpu_glow_toggle_invalidates_cached_render_and_topology_clears_old_peaks() {
+    let mut g = Graphs::default();
+    let now = Instant::now();
+    let mut s = Settings::default();
+    cpu_sample(&mut g, &[100.0, 60.0], now, &s);
+    cpu_sample(&mut g, &[20.0, 10.0], now + Duration::from_secs(2), &s);
+    let values = [Some(20.0), Some(10.0)];
+    let glowing = g.meter("cpu", &values, &s, 16.0, false);
+    s.peak_glow = false;
+    let plain = g.meter("cpu", &values, &s, 16.0, false);
+    assert_ne!(glowing.handle.id(), plain.handle.id());
+    assert!(
+        !g.meter_svg("cpu", &values, &s, 16.0, false)
+            .0
+            .contains("stroke-width=\"1\"")
+    );
+    s.peak_glow = true;
+    cpu_sample(&mut g, &[5.0], now + Duration::from_secs(4), &s);
+    assert_eq!(g.peaks["cpu"].len(), 1);
+    assert_eq!(g.peaks["cpu"][0].unwrap().value, 5.0);
+    s.peak_glow = false;
+    cpu_sample(&mut g, &[5.0], now + Duration::from_secs(6), &s);
+    assert!(g.peaks.is_empty());
 }

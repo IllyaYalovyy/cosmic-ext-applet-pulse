@@ -39,7 +39,7 @@ History scrolls from right to left over the last two minutes:
   One core at 100% therefore produces a red high trace even if the average is low.
 - The popup and hover summary include both average and busiest-core percentages.
 
-**Peak afterglow** retains a faint colored trail and cap above falling RAM, swap,
+**Peak afterglow** retains a faint colored trail and cap above falling CPU, RAM, swap,
 network, disk and GPU bars. The previous peak fades over eight seconds; a new high
 renews it. At slow polling rates, its lifetime is at least two sampling periods so
 one falling sample still shows the trail without extra wakeups. Unavailable metrics clear their trails. Turning it off removes trails
