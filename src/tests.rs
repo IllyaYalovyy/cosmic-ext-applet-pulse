@@ -83,3 +83,33 @@ fn panel_preferences_and_multiple_mounts_apply_without_storage() {
     assert!(app.settings.selected_mounts().is_empty());
     assert!(app.settings_error.is_some());
 }
+
+#[test]
+fn preferences_navigation_does_not_change_or_save_configuration() {
+    let mut app = App::default();
+    let original = app.settings.clone();
+    let _ = app.update(Message::PopupPage(PopupPage::Settings));
+    let _ = app.update(Message::ResourceOptions(4));
+    assert_eq!(app.expanded_resource, Some(4));
+    let _ = app.update(Message::ResourceOptions(3));
+    assert_eq!(app.expanded_resource, Some(3));
+    let _ = app.update(Message::ResourceOptions(3));
+    assert_eq!(app.expanded_resource, None);
+    let _ = app.update(Message::PopupPage(PopupPage::Readings));
+    assert_eq!(app.settings, original);
+    assert!(app.settings_error.is_none());
+}
+
+#[test]
+fn common_display_preferences_apply_and_normalize() {
+    let mut app = App::default();
+    let _ = app.update(Message::Icons(false));
+    let _ = app.update(Message::Interval(5));
+    let _ = app.update(Message::GlowSeconds(15));
+    assert!(!app.settings.icons);
+    assert_eq!((app.settings.interval, app.settings.glow_seconds), (5, 15));
+    let _ = app.update(Message::Interval(0));
+    let _ = app.update(Message::GlowSeconds(u32::MAX));
+    assert_eq!((app.settings.interval, app.settings.glow_seconds), (1, 60));
+    assert!(app.settings_error.is_some());
+}

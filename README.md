@@ -32,13 +32,13 @@ CPU can be hidden independently.
 
 ## Panel visibility and disk mounts (0.4.0)
 
-In the popup, **Show in panel** switches CPU, RAM, swap, network, disk and GPU
-independently. **Individual meters** also lets you hide download/upload, disk
+In **Settings → Resources**, switches control CPU, RAM, swap, network, disk and GPU
+independently. Expand Network, Disk or GPU to hide download/upload, disk
 space/read/write, or GPU utilization/memory separately. These switches only affect
 the panel; the popup retains readings and availability status. When every meter is
 hidden or unavailable, a neutral Pulse launcher remains so settings stay accessible.
 
-**Disk mounts** lists detected mounts and any configured mounts that are currently
+**Settings → Resources → Disk → Mounts to monitor** lists detected mounts and any configured mounts that are currently
 unavailable. Toggle each mount independently; selecting none hides all disk meters.
 Disconnected mounts disappear from the panel and return when detected again. Each
 mount has its own label and peak tracking. Bind mounts and separate mount points
@@ -67,7 +67,7 @@ alter system permissions. Integrated GPU shared RAM is not reported as dedicated
 
 ## Graphs (0.3.0)
 
-Choose **Cores**, **History**, or **Both** from the popup's **CPU graph** controls.
+Choose **Per core**, **History**, or **Both** under **Settings → Resources → CPU**.
 Cores remains the default. At small panel sizes the SVG geometry matches its actual
 widget size: thin core bars have a one-pixel gap and no hidden aspect-ratio padding.
 History scrolls from right to left over the last two minutes:
@@ -181,3 +181,13 @@ For graph development, `cargo test benchmark_graph_preparation -- --ignored --no
 measures CPU-side graph preparation and cached view lookup (not full renderer/GPU
 or sensor cost). `PULSE_PREVIEW_DIR=/tmp/pulse-preview cargo test export_graph_previews
 -- --ignored` exports SVG examples from the production renderer.
+
+### Popup navigation
+
+**Readings** opens first, with live values and a shortcut to System Monitor.
+**Settings** keeps shared display choices together: icons, refresh interval, peak
+afterglow and fade duration. Changes save immediately. Open a resource row to see
+its options; only one expands at a time. Network and GPU meter switches sit under
+their resource, while Disk contains both meter switches and mount selection.
+Hidden resources retain their options, and unavailable selected mounts remain
+visible in the picker. About and support information sit at the bottom of Settings.

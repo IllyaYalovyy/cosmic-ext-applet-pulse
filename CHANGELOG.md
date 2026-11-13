@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 — 2026-11-13
+
+- Separate live Readings from Settings, keeping navigation above the scrollable content.
+- Group shared display preferences and disclose per-resource options on demand.
+- Keep disk mounts with disk meters, and CPU graph styles with CPU options.
+- Add immediate-save icon, refresh interval and afterglow-duration controls while preserving custom values.
+
 ## 0.4.0 — 2026-11-13
 
 - Hide unavailable panel meters and resource icons while preserving zero readings and popup status.

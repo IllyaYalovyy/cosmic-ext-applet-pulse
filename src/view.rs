@@ -1,6 +1,6 @@
 use crate::{
-    App, Message,
-    config::{CpuGraph, METERS, RESOURCES},
+    App, Message, PopupPage,
+    config::CpuGraph,
     metrics::{bytes, percent},
 };
 use cosmic::{
@@ -271,10 +271,25 @@ impl App {
         self.core.applet.autosize_window(tooltip).into()
     }
     pub fn popup_view(&self) -> Element<'_, Message> {
+        let tabs = [
+            (PopupPage::Readings, "Readings"),
+            (PopupPage::Settings, "Settings"),
+        ]
+        .into_iter()
+        .map(|(page, label)| {
+            widget::button::text(if self.popup_page == page {
+                format!("✓ {label}")
+            } else {
+                label.into()
+            })
+            .on_press(Message::PopupPage(page))
+            .into()
+        });
         let mut content = widget::Column::new()
             .spacing(12)
             .padding(16)
-            .push(widget::text::title3("Pulse"));
+            .push(widget::text::title3("Pulse"))
+            .push(widget::Row::with_children(tabs).spacing(8));
         for error in [
             self.error.as_ref(),
             self.sampling_error.as_ref(),
@@ -285,94 +300,31 @@ impl App {
         {
             content = content.push(widget::text(error));
         }
-        for group in self.groups() {
-            content = content
-                .push(widget::text::heading(group.label))
-                .push(widget::text(group.detail));
-        }
-        content = content.push(widget::text::heading("Show in panel"));
-        for (index, label) in RESOURCES.into_iter().enumerate() {
-            content = content.push(widget::settings::item(
-                label,
-                widget::toggler(self.settings.visible[index])
-                    .on_toggle(move |enabled| Message::ResourceVisibility(index, enabled)),
+        let page = match self.popup_page {
+            PopupPage::Readings => self.readings_view(),
+            PopupPage::Settings => self.preferences_view(),
+        };
+        content = content.push(widget::scrollable(page).height(Length::Shrink));
+        self.core.applet.popup_container(content).into()
+    }
+
+    fn readings_view(&self) -> Element<'_, Message> {
+        let groups = self.groups();
+        let mut content = widget::Column::new().spacing(12);
+        if groups.is_empty() {
+            content = content.push(widget::text(
+                "No resources selected. Choose what to show in Settings.",
             ));
         }
-        content = content.push(widget::text::caption(
-            "Unavailable readings are hidden automatically. Zero readings remain visible.",
-        ));
-        content = content.push(widget::text::heading("Individual meters"));
-        for (key, label) in METERS {
-            content = content.push(widget::settings::item(
-                label,
-                widget::toggler(
-                    !self
-                        .settings
-                        .hidden_metrics
-                        .iter()
-                        .any(|hidden| hidden == key),
-                )
-                .on_toggle(move |enabled| Message::MetricVisibility(key.into(), enabled)),
-            ));
+        for group in groups {
+            content = content.push(
+                widget::settings::section()
+                    .title(group.label)
+                    .add(widget::text(group.detail)),
+            );
         }
-        content = content.push(widget::text::heading("Disk mounts"));
-        let mut mounts = std::collections::BTreeSet::new();
-        mounts.extend(self.settings.selected_mounts().iter().cloned());
-        if let Some(snapshot) = &self.snapshot {
-            mounts.extend(snapshot.disks.keys().cloned());
-        }
-        for mount in mounts {
-            let available = self
-                .snapshot
-                .as_ref()
-                .is_some_and(|s| s.disks.contains_key(&mount));
-            let label = if available {
-                mount.clone()
-            } else {
-                format!("{mount} (unavailable)")
-            };
-            let selected = self.settings.selected_mounts().contains(&mount);
-            content = content.push(widget::settings::item(
-                label,
-                widget::toggler(selected)
-                    .on_toggle(move |enabled| Message::MountVisibility(mount.clone(), enabled)),
-            ));
-        }
-        let choices = [
-            (CpuGraph::Cores, "Cores"),
-            (CpuGraph::History, "History"),
-            (CpuGraph::Both, "Both"),
-        ];
-        let buttons = choices.into_iter().map(|(mode, label)| {
-            widget::button::text(if mode == self.settings.cpu_graph {
-                format!("✓ {label}")
-            } else {
-                label.into()
-            })
-            .on_press(Message::CpuGraph(mode))
-            .into()
-        });
-        let explanation = "History: filled area = average; dashed line = busiest core. Newest samples are on the right.";
-        content = content
-            .push(widget::text::heading("CPU graph"))
-            .push(widget::Row::with_children(buttons).spacing(4))
-            .push(widget::text::caption(explanation))
-            .push(widget::settings::item(
-                "Peak afterglow",
-                widget::toggler(self.settings.peak_glow).on_toggle(Message::PeakGlow),
-            ));
-        content = content
+        content
             .push(widget::button::text("Open System Monitor").on_press(Message::OpenMonitor))
-            .push(widget::text::heading("About"))
-            .push(widget::text(format!(
-                "Pulse {} · Resource monitor for COSMIC",
-                env!("CARGO_PKG_VERSION")
-            )))
-            .push(widget::text("By Illya Yalovyy"))
-            .push(widget::button::text("Support development").on_press(Message::Donate));
-        self.core
-            .applet
-            .popup_container(widget::scrollable(content).height(Length::Shrink))
             .into()
     }
 }
@@ -580,7 +532,7 @@ mod tests {
         assert!(!app.panel_groups().iter().any(|g| g.resource == 4));
     }
     #[test]
-    fn popup_graph_controls_appear_once_even_with_multiple_or_hidden_resources() {
+    fn readings_keep_navigation_and_monitor_access_with_all_resources_hidden() {
         use cosmic::iced::advanced::widget::{Tree, tree::Tag};
         let reference: Element<'_, Message> = widget::button::text("Example")
             .on_press(Message::Donate)
@@ -595,9 +547,9 @@ mod tests {
                     .sum::<usize>()
         }
         let mut app = app();
-        // Three display modes, System Monitor and Donate, irrespective of sensor count.
-        assert_eq!(count(&Tree::new(app.popup_view()), button_tag), 5);
+        // Two page tabs and System Monitor remain reachable even with no readings.
+        assert_eq!(count(&Tree::new(app.popup_view()), button_tag), 3);
         app.settings.visible = vec![false; 6];
-        assert_eq!(count(&Tree::new(app.popup_view()), button_tag), 5);
+        assert_eq!(count(&Tree::new(app.popup_view()), button_tag), 3);
     }
 }

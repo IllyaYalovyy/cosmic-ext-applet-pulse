@@ -1,6 +1,7 @@
 mod config;
 mod graphs;
 mod metrics;
+mod preferences;
 mod view;
 
 use config::{APP_ID, CpuGraph, Settings};
@@ -31,7 +32,16 @@ struct App {
     error: Option<String>,
     sampling_error: Option<String>,
     settings_error: Option<String>,
+    popup_page: PopupPage,
+    expanded_resource: Option<usize>,
 }
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum PopupPage {
+    #[default]
+    Readings,
+    Settings,
+}
+
 /// Events from the panel, configuration watcher and sampling worker.
 #[derive(Clone, Debug)]
 enum Message {
@@ -43,6 +53,11 @@ enum Message {
     Config(Settings),
     OpenMonitor,
     Donate,
+    PopupPage(PopupPage),
+    ResourceOptions(usize),
+    Icons(bool),
+    Interval(u32),
+    GlowSeconds(u32),
     CpuGraph(CpuGraph),
     PeakGlow(bool),
     ResourceVisibility(usize, bool),
@@ -149,6 +164,7 @@ impl cosmic::Application for App {
                     };
                     let id = Id::unique();
                     self.popup = Some(id);
+                    self.popup_page = PopupPage::Readings;
                     let mut settings = self
                         .core
                         .applet
@@ -181,6 +197,32 @@ impl cosmic::Application for App {
             Message::Config(settings) => {
                 self.apply_settings(settings);
                 return Task::none();
+            }
+            Message::PopupPage(page) => self.popup_page = page,
+            Message::ResourceOptions(index) => {
+                self.expanded_resource = if self.expanded_resource == Some(index) {
+                    None
+                } else {
+                    Some(index)
+                };
+            }
+            Message::Icons(enabled) => {
+                let mut settings = self.settings.clone();
+                settings.icons = enabled;
+                self.apply_settings(settings);
+                self.save_settings();
+            }
+            Message::Interval(seconds) => {
+                let mut settings = self.settings.clone();
+                settings.interval = seconds;
+                self.apply_settings(settings);
+                self.save_settings();
+            }
+            Message::GlowSeconds(seconds) => {
+                let mut settings = self.settings.clone();
+                settings.glow_seconds = seconds;
+                self.apply_settings(settings);
+                self.save_settings();
             }
             Message::CpuGraph(mode) => {
                 let mut settings = self.settings.clone();
