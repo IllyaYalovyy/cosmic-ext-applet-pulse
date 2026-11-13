@@ -956,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-ext-applet-pulse"
-version = "0.3.3"
+version = "0.4.0"
 dependencies = [
  "libcosmic",
  "nvml-wrapper",

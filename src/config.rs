@@ -1,6 +1,16 @@
 use cosmic::cosmic_config::{self, CosmicConfigEntry, cosmic_config_derive::CosmicConfigEntry};
 
 pub const APP_ID: &str = "io.github.illyayalovyy.Pulse";
+pub const RESOURCES: [&str; 6] = ["CPU", "RAM", "Swap", "Network", "Disk", "GPU"];
+pub const METERS: [(&str, &str); 7] = [
+    ("network-down", "Network download"),
+    ("network-up", "Network upload"),
+    ("disk-space", "Disk used space"),
+    ("disk-read", "Disk read rate"),
+    ("disk-write", "Disk write rate"),
+    ("gpu-usage", "GPU utilization"),
+    ("gpu-memory", "GPU memory"),
+];
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CpuGraph {
@@ -23,6 +33,9 @@ pub struct Settings {
     pub disk_mib: u32,
     pub interface: String,
     pub mount: String,
+    /// None preserves the legacy single-mount preference; Some([]) selects none.
+    pub mounts: Option<Vec<String>>,
+    pub hidden_metrics: Vec<String>,
     pub cpu_graph: CpuGraph,
     pub peak_glow: bool,
     pub glow_seconds: u32,
@@ -41,6 +54,8 @@ impl Default for Settings {
             disk_mib: 500,
             interface: String::new(),
             mount: "/".into(),
+            mounts: None,
+            hidden_metrics: Vec::new(),
             cpu_graph: CpuGraph::Cores,
             peak_glow: true,
             glow_seconds: 8,
@@ -50,9 +65,19 @@ impl Default for Settings {
     }
 }
 impl Settings {
+    pub fn selected_mounts(&self) -> &[String] {
+        self.mounts
+            .as_deref()
+            .unwrap_or_else(|| std::slice::from_ref(&self.mount))
+    }
+
     pub fn normalized(mut self) -> Self {
         self.visible.resize(6, true);
         self.visible.truncate(6);
+        if let Some(mounts) = &mut self.mounts {
+            let mut seen = std::collections::BTreeSet::new();
+            mounts.retain(|mount| seen.insert(mount.clone()));
+        }
         self.glow_seconds = self.glow_seconds.clamp(1, 60);
         self.history_seconds = self.history_seconds.clamp(30, 120);
         self.history_width = self.history_width.clamp(32, 160);
@@ -130,6 +155,8 @@ mod tests {
             critical: 85,
             interface: "eth0".into(),
             mount: "/home".into(),
+            mounts: Some(vec!["/".into(), "/home".into()]),
+            hidden_metrics: vec!["disk-write".into(), "gpu-memory".into()],
             cpu_graph: CpuGraph::Both,
             peak_glow: false,
             glow_seconds: 12,
@@ -152,6 +179,7 @@ mod tests {
                 .unwrap();
         store.set("interval", 7_u32).unwrap();
         store.set("warning", 62_u32).unwrap();
+        store.set("mount", "/home").unwrap();
         let settings = Settings::get_entry(&store)
             .unwrap_or_else(|(_, s)| s)
             .normalized();
@@ -160,5 +188,18 @@ mod tests {
         assert_eq!(settings.cpu_graph, CpuGraph::Cores);
         assert!(settings.peak_glow);
         assert_eq!(settings.history_seconds, 120);
+        assert_eq!(settings.selected_mounts(), &["/home"]);
+        assert!(settings.hidden_metrics.is_empty());
+    }
+
+    #[test]
+    fn legacy_mount_is_preserved_and_an_empty_selection_stays_empty() {
+        let mut settings = Settings {
+            mount: "/home".into(),
+            ..Settings::default()
+        };
+        assert_eq!(settings.selected_mounts(), &["/home"]);
+        settings.mounts = Some(Vec::new());
+        assert!(settings.normalized().selected_mounts().is_empty());
     }
 }

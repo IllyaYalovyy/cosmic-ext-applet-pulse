@@ -45,6 +45,9 @@ enum Message {
     Donate,
     CpuGraph(CpuGraph),
     PeakGlow(bool),
+    ResourceVisibility(usize, bool),
+    MetricVisibility(String, bool),
+    MountVisibility(String, bool),
 }
 impl cosmic::Application for App {
     type Executor = cosmic::executor::Default;
@@ -191,6 +194,34 @@ impl cosmic::Application for App {
                 self.apply_settings(settings);
                 self.save_settings();
             }
+            Message::ResourceVisibility(index, enabled) => {
+                let mut settings = self.settings.clone();
+                if let Some(visible) = settings.visible.get_mut(index) {
+                    *visible = enabled;
+                }
+                self.apply_settings(settings);
+                self.save_settings();
+            }
+            Message::MetricVisibility(key, enabled) => {
+                let mut settings = self.settings.clone();
+                settings.hidden_metrics.retain(|metric| metric != &key);
+                if !enabled {
+                    settings.hidden_metrics.push(key);
+                }
+                self.apply_settings(settings);
+                self.save_settings();
+            }
+            Message::MountVisibility(mount, enabled) => {
+                let mut settings = self.settings.clone();
+                let mut mounts = settings.selected_mounts().to_vec();
+                mounts.retain(|selected| selected != &mount);
+                if enabled {
+                    mounts.push(mount);
+                }
+                settings.mounts = Some(mounts);
+                self.apply_settings(settings);
+                self.save_settings();
+            }
             Message::OpenMonitor => {
                 let result = ["cosmic-monitor", "gnome-system-monitor"]
                     .into_iter()
@@ -220,6 +251,9 @@ impl App {
         let settings = settings.normalized();
         if self.settings.interface != settings.interface
             || self.settings.mount != settings.mount
+            || self.settings.mounts != settings.mounts
+            || self.settings.visible != settings.visible
+            || self.settings.hidden_metrics != settings.hidden_metrics
             || self.settings.network_mib != settings.network_mib
             || self.settings.disk_mib != settings.disk_mib
             || self.settings.peak_glow != settings.peak_glow

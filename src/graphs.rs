@@ -182,47 +182,44 @@ impl Graphs {
         height: f32,
         vertical: bool,
     ) -> (String, f32, f32) {
+        let count = values.iter().filter(|v| clean(**v).is_some()).count();
         let (bar, gap, columns, width, total_height) =
-            geometry(values.len(), height, vertical, key == "cpu");
+            geometry(count, height, vertical, key == "cpu");
         let mut svg = start(width, total_height);
-        for (i, value) in values.iter().enumerate() {
-            let value = clean(*value);
-            let x = (i % columns) as f32 * (bar + gap);
-            let top = (i / columns) as f32 * (height + 2.0);
-            let color = settings.color(value);
+        for (position, (i, value)) in values
+            .iter()
+            .enumerate()
+            .filter_map(|(i, value)| clean(*value).map(|v| (i, v)))
+            .enumerate()
+        {
+            let x = (position % columns) as f32 * (bar + gap);
+            let top = (position / columns) as f32 * (height + 2.0);
+            let color = settings.color(Some(value));
             svg.push_str(&format!(r#"<rect x="{x}" y="{top}" width="{bar}" height="{height}" rx="1" fill="{color}" opacity="0.20"/>"#));
-            if let Some(value) = value {
-                let fill = (value * height / 100.0).max(1.0);
-                if settings.peak_glow
-                    && let Some(p) = self
-                        .peaks
-                        .get(key)
-                        .and_then(|p| p.get(i))
-                        .copied()
-                        .flatten()
-                    && let Some(now) = self.now
-                {
-                    let fade = (1.0
-                        - now.saturating_duration_since(p.at).as_secs_f32()
-                            / glow_seconds(settings))
-                    .clamp(0.0, 1.0);
-                    let peak_fill = p.value * height / 100.0;
-                    if peak_fill > fill && fade > 0.0 {
-                        let peak_color = settings.color(Some(p.value));
-                        let y = top + height - peak_fill;
-                        svg.push_str(&format!(r#"<rect x="{x}" y="{y}" width="{bar}" height="{}" fill="{peak_color}" opacity="{:.3}"/><path d="M{x} {y}h{bar}" stroke="{peak_color}" stroke-width="1" opacity="{:.3}"/>"#,peak_fill-fill,0.22*fade,0.8*fade));
-                    }
+            let fill = (value * height / 100.0).max(1.0);
+            if settings.peak_glow
+                && let Some(p) = self
+                    .peaks
+                    .get(key)
+                    .and_then(|p| p.get(i))
+                    .copied()
+                    .flatten()
+                && let Some(now) = self.now
+            {
+                let fade = (1.0
+                    - now.saturating_duration_since(p.at).as_secs_f32() / glow_seconds(settings))
+                .clamp(0.0, 1.0);
+                let peak_fill = p.value * height / 100.0;
+                if peak_fill > fill && fade > 0.0 {
+                    let peak_color = settings.color(Some(p.value));
+                    let y = top + height - peak_fill;
+                    svg.push_str(&format!(r#"<rect x="{x}" y="{y}" width="{bar}" height="{}" fill="{peak_color}" opacity="{:.3}"/><path d="M{x} {y}h{bar}" stroke="{peak_color}" stroke-width="1" opacity="{:.3}"/>"#,peak_fill-fill,0.22*fade,0.8*fade));
                 }
-                svg.push_str(&format!(
-                    r#"<rect x="{x}" y="{}" width="{bar}" height="{fill}" rx="1" fill="{color}"/>"#,
-                    top + height - fill
-                ));
-            } else {
-                svg.push_str(&format!(
-                    r#"<path d="M{x} {}h{bar}" stroke="{color}"/>"#,
-                    top + height / 2.0
-                ));
             }
+            svg.push_str(&format!(
+                r#"<rect x="{x}" y="{}" width="{bar}" height="{fill}" rx="1" fill="{color}"/>"#,
+                top + height - fill
+            ));
         }
         svg.push_str("</svg>");
         (svg, width, total_height)

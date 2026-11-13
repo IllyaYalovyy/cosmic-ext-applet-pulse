@@ -65,3 +65,21 @@ fn unrelated_window_close_does_not_close_popup() {
     let _ = app.update(Message::Closed(popup));
     assert_eq!(app.popup, None);
 }
+
+#[test]
+fn panel_preferences_and_multiple_mounts_apply_without_storage() {
+    let mut app = App::default();
+    let _ = app.update(Message::ResourceVisibility(1, false));
+    let _ = app.update(Message::MetricVisibility("gpu-memory".into(), false));
+    let _ = app.update(Message::MetricVisibility("gpu-memory".into(), false));
+    let _ = app.update(Message::MountVisibility("/home".into(), true));
+    assert!(!app.settings.visible[1]);
+    assert_eq!(app.settings.hidden_metrics, ["gpu-memory"]);
+    assert_eq!(app.settings.selected_mounts(), &["/", "/home"]);
+    let _ = app.update(Message::MetricVisibility("gpu-memory".into(), true));
+    let _ = app.update(Message::MountVisibility("/".into(), false));
+    let _ = app.update(Message::MountVisibility("/home".into(), false));
+    assert!(app.settings.hidden_metrics.is_empty());
+    assert!(app.settings.selected_mounts().is_empty());
+    assert!(app.settings_error.is_some());
+}

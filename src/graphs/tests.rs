@@ -304,8 +304,29 @@ fn invalid_sensor_values_never_reach_svg_coordinates() {
         assert!(g.peaks["ram"][0].is_none());
         let svg = g.meter_svg("ram", &[Some(invalid)], &s, 16.0, false).0;
         assert!(!svg.contains("NaN") && !svg.contains("inf"));
-        assert!(svg.contains("#8b919c"));
+        assert!(!svg.contains("<rect") && !svg.contains("<path"));
     }
+}
+
+#[test]
+fn missing_meters_take_no_space_and_keep_the_correct_peak() {
+    let mut g = Graphs::default();
+    let s = Settings::default();
+    let now = Instant::now();
+    g.observe(&[], [("gpu".into(), vec![Some(30.0), Some(90.0)])], now, &s);
+    g.observe(
+        &[],
+        [("gpu".into(), vec![None, Some(20.0)])],
+        now + Duration::from_secs(2),
+        &s,
+    );
+    let (svg, width, height) = g.meter_svg("gpu", &[None, Some(20.0)], &s, 16.0, false);
+    let (_, single_width, single_height) = g.meter_svg("gpu", &[Some(20.0)], &s, 16.0, false);
+    assert_eq!((width, height), (single_width, single_height));
+    assert!(svg.contains("opacity=\"0.600\""));
+    assert!(!svg.contains("#8b919c"));
+    assert!(g.peaks["gpu"][0].is_none());
+    assert_eq!(g.peaks["gpu"][1].unwrap().value, 90.0);
 }
 
 #[test]

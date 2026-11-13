@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — 2026-11-13
+
+- Hide unavailable panel meters and resource icons while preserving zero readings and popup status.
+- Add saved popup switches for every resource and individual network, disk and GPU meter.
+- Show independently selected disk mounts, preserving existing single-mount preferences.
+- Document Intel i915 telemetry limitations and the GPU diagnosis on Iris Xe hardware.
+
 ## 0.3.3 — 2026-11-09
 
 - Fix missing afterglow on CPU core bars, sharing the existing sample-driven peak tracking and fade.

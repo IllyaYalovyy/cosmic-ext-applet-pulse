@@ -10,7 +10,7 @@
     <p>Monitor each logical CPU, RAM, swap, network traffic, disk space and I/O,
     and supported GPU utilization and memory with compact colored meters.</p>
     <p>Configure visibility, refresh cadence, thresholds, bandwidth scales,
-    network interface and disk mount point through cosmic-config.</p>
+    network interface through cosmic-config; select visible meters and disk mounts in the popup.</p>
   </description>
   <url type="homepage">https://github.com/IllyaYalovyy/cosmic-ext-applet-pulse</url>
   <url type="donation">https://github.com/sponsors/IllyaYalovyy</url>
@@ -21,6 +21,9 @@
   </provides>
   <supports><control>keyboard</control><control>pointing</control></supports>
   <releases>
+    <release version="0.4.0" date="2026-11-13">
+      <description><p>Hide unavailable panel readings and add saved visibility and multiple disk mount controls.</p></description>
+    </release>
     <release version="0.3.3" date="2026-11-09">
       <description><p>Fix missing afterglow on CPU core bars.</p></description>
     </release>

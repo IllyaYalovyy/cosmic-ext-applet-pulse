@@ -2,30 +2,68 @@
 
 A configurable Rust resource monitor for the COSMIC panel and dock. Each resource
 has an icon and narrow vertical meters; CPU has one thin bar per logical core.
-Click to open readings, graph controls, About, System Monitor and a donation link. All settings persist through cosmic-config
+Click to open readings, visibility and mount controls, graph controls, About, System Monitor and a donation link. All settings persist through cosmic-config
 and external changes apply live. No root privileges or monitoring daemon needed.
 
 ## Readings
 
 - **CPU:** logical CPUs in OS order; independent load bars, average in the popup.
 - **RAM:** used / total memory (available reclaimable memory is not counted as used).
-- **Swap:** used / total; disabled swap is gray, never a divide-by-zero or false alarm.
+- **Swap:** used / total; disabled swap is hidden from the panel.
 - **Network:** download then upload in bytes/second, measured over actual elapsed
   time. Select an interface or aggregate all except loopback. Aggregation includes
   VPNs/bridges, so select a physical interface to avoid counting traffic twice.
-- **Disk:** selected mount's used space, read rate and write rate, in that order.
+- **Disk:** used space, read rate and write rate for each selected mount, in that order.
+  Choose any combination of mounts (for example `/` and `/home`) in the popup.
   I/O is device activity from Linux block counters; mounts on the same device share
   activity, not just writes to files under the chosen directory.
 - **GPU:** utilization then VRAM per detected GPU. NVIDIA uses dynamically loaded
   NVML (no build-time NVIDIA SDK); AMD/other DRM drivers use exported sysfs
-  counters. Intel and other drivers without these counters show unavailable;
+  counters. Intel and other drivers without these counters are hidden from the panel;
   no privileged perf access is attempted. Shared GPU memory is not invented as VRAM.
 
 Green at or below 50%, yellow above 50% through 80%, red above 80%, configurable. Rates use configurable
 full scales (default network 100 MiB/s, disk 500 MiB/s); red means high load relative
-to your scale, not a hardware fault. Gray with a dash means unavailable. The fill
+to your scale, not a hardware fault. Unavailable readings and their empty resource icons
+are omitted from the panel; partial resources show only available meters. Valid zero
+readings remain visible. The popup keeps availability details. The fill
 height carries the same information as color. Vertical panels wrap cores to fit the panel width. Very high core counts can occupy substantial horizontal panel space;
 CPU can be hidden independently.
+
+## Panel visibility and disk mounts (0.4.0)
+
+In the popup, **Show in panel** switches CPU, RAM, swap, network, disk and GPU
+independently. **Individual meters** also lets you hide download/upload, disk
+space/read/write, or GPU utilization/memory separately. These switches only affect
+the panel; the popup retains readings and availability status. When every meter is
+hidden or unavailable, a neutral Pulse launcher remains so settings stay accessible.
+
+**Disk mounts** lists detected mounts and any configured mounts that are currently
+unavailable. Toggle each mount independently; selecting none hides all disk meters.
+Disconnected mounts disappear from the panel and return when detected again. Each
+mount has its own label and peak tracking. Bind mounts and separate mount points
+on the same device may share capacity and I/O statistics.
+
+Settings use the existing `v1` cosmic-config directory:
+
+- `visible`: six booleans in CPU, RAM, swap, network, disk, GPU order (default all true).
+- `hidden_metrics`: list of hidden meter keys, default `[]`. Keys are
+  `network-down`, `network-up`, `disk-space`, `disk-read`, `disk-write`,
+  `gpu-usage`, and `gpu-memory`.
+- `mounts`: `None` uses the existing `mount` setting (default `/`), preserving older
+  preferences. The first popup mount change saves an explicit list, for example
+  `Some(["/", "/home"])`. `Some([])` selects no mounts.
+
+### Intel GPU availability
+
+On the tested Intel Tiger Lake Iris Xe (`8086:9a49`, `i915`) machine, the DRM device
+exists but exposes none of `gpu_busy_percent`, `mem_info_vram_used`, or
+`mem_info_vram_total`. Pulse currently reads these sysfs files or NVIDIA NVML, so
+both GPU readings are unavailable here. This is a collector backend limitation,
+not a missing NVIDIA library. Intel's kernel telemetry uses other interfaces,
+including [DRM client usage statistics](https://docs.kernel.org/gpu/drm-usage-stats.html).
+Supporting those requires a separate collector; this change does not add one or
+alter system permissions. Integrated GPU shared RAM is not reported as dedicated VRAM.
 
 ## Graphs (0.3.0)
 

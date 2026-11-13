@@ -1,6 +1,6 @@
 use crate::{
     App, Message,
-    config::CpuGraph,
+    config::{CpuGraph, METERS, RESOURCES},
     metrics::{bytes, percent},
 };
 use cosmic::{
@@ -15,6 +15,7 @@ use cosmic::{
 
 /// One resource and its panel meters and textual reading.
 struct Group {
+    resource: usize,
     key: String,
     label: String,
     icon: &'static str,
@@ -46,9 +47,6 @@ impl App {
             ("GPU", "video-display-symbolic"),
         ];
         for (index, (label, icon)) in definitions.into_iter().enumerate() {
-            if !self.settings.visible[index] {
-                continue;
-            }
             let (values, detail) = match (index, s) {
                 (0, Some(s)) => (
                     s.cpus.iter().copied().map(Some).collect(),
@@ -86,36 +84,41 @@ impl App {
                     }
                 }
                 (4, Some(s)) => {
-                    if let Some(disk) = s.disks.get(&self.settings.mount) {
-                        let scale = f64::from(self.settings.disk_mib) * 1_048_576.0;
-                        let read = disk.read_write.map(|v| (v.0 / scale * 100.0) as f32);
-                        let write = disk.read_write.map(|v| (v.1 / scale * 100.0) as f32);
-                        let rates = disk
-                            .read_write
-                            .map(|(r, w)| format!("R {}/s   W {}/s", bytes(r), bytes(w)))
-                            .unwrap_or_else(|| "I/O counters unavailable".into());
-                        (
-                            vec![percent(disk.used, disk.total), read, write],
-                            format!(
-                                "{} · {}\n{rates}",
-                                self.settings.mount,
-                                capacity((disk.used, disk.total))
-                            ),
-                        )
-                    } else {
-                        (
-                            vec![None; 3],
-                            format!("{} unavailable", self.settings.mount),
-                        )
+                    for mount in self.settings.selected_mounts() {
+                        let (values, detail) = if let Some(disk) = s.disks.get(mount) {
+                            let scale = f64::from(self.settings.disk_mib) * 1_048_576.0;
+                            let read = disk.read_write.map(|v| (v.0 / scale * 100.0) as f32);
+                            let write = disk.read_write.map(|v| (v.1 / scale * 100.0) as f32);
+                            let rates = disk
+                                .read_write
+                                .map(|(r, w)| format!("R {}/s   W {}/s", bytes(r), bytes(w)))
+                                .unwrap_or_else(|| "I/O counters unavailable".into());
+                            (
+                                vec![percent(disk.used, disk.total), read, write],
+                                format!("{}\n{rates}", capacity((disk.used, disk.total))),
+                            )
+                        } else {
+                            (vec![None; 3], "Mount unavailable".into())
+                        };
+                        groups.push(Group {
+                            resource: index,
+                            key: format!("disk:{mount}"),
+                            label: format!("Disk {mount} · space / R / W"),
+                            icon,
+                            values,
+                            detail,
+                        });
                     }
+                    continue;
                 }
                 (5, Some(s)) => {
                     if s.gpus.is_empty() {
                         (vec![None; 2], "GPU telemetry unavailable".into())
                     } else {
-                        for (index, gpu) in s.gpus.iter().enumerate() {
+                        for (gpu_index, gpu) in s.gpus.iter().enumerate() {
                             groups.push(Group {
-                                key: format!("gpu:{index}:{}", gpu.name),
+                                resource: index,
+                                key: format!("gpu:{gpu_index}:{}", gpu.name),
                                 label: gpu.name.clone(),
                                 icon,
                                 values: vec![gpu.busy, gpu.memory.and_then(|(u, t)| percent(u, t))],
@@ -136,6 +139,7 @@ impl App {
                 _ => (vec![None], "Collecting first sample…".into()),
             };
             groups.push(Group {
+                resource: index,
                 key: if index == 0 {
                     "cpu".into()
                 } else {
@@ -149,8 +153,39 @@ impl App {
         }
         groups
     }
+    /// Keep meter slots stable for peak tracking; the renderer compacts missing slots.
+    fn panel_groups(&self) -> Vec<Group> {
+        self.groups()
+            .into_iter()
+            .filter_map(|mut group| {
+                if !self.settings.visible[group.resource] {
+                    return None;
+                }
+                let keys: &[&str] = match group.resource {
+                    3 => &["network-down", "network-up"],
+                    4 => &["disk-space", "disk-read", "disk-write"],
+                    5 => &["gpu-usage", "gpu-memory"],
+                    _ => &[],
+                };
+                for (index, value) in group.values.iter_mut().enumerate() {
+                    if value.is_some_and(|v| !v.is_finite())
+                        || keys.get(index).is_some_and(|key| {
+                            self.settings
+                                .hidden_metrics
+                                .iter()
+                                .any(|hidden| hidden == key)
+                        })
+                    {
+                        *value = None;
+                    }
+                }
+                group.values.iter().any(Option::is_some).then_some(group)
+            })
+            .collect()
+    }
+
     pub fn record_graph_sample(&mut self, now: std::time::Instant) {
-        let groups = self.groups().into_iter().map(|g| (g.key, g.values));
+        let groups = self.panel_groups().into_iter().map(|g| (g.key, g.values));
         let cpus = self
             .snapshot
             .as_deref()
@@ -161,7 +196,7 @@ impl App {
     pub fn panel(&self) -> Element<'_, Message> {
         let horizontal = self.core.applet.is_horizontal();
         let size = f32::from(self.core.applet.suggested_size(true).0);
-        let groups = self.groups();
+        let groups = self.panel_groups();
         let summary = groups
             .iter()
             .map(|g| format!("{}: {}", g.label, g.detail))
@@ -204,7 +239,7 @@ impl App {
             })
             .collect();
         let strip: Element<'_, Message> = if units.is_empty() {
-            resource_icon("processor-symbolic", size)
+            resource_icon("view-grid-symbolic", size)
         } else if horizontal {
             widget::Row::with_children(units)
                 .spacing((size / 3.0).max(4.0))
@@ -255,6 +290,54 @@ impl App {
                 .push(widget::text::heading(group.label))
                 .push(widget::text(group.detail));
         }
+        content = content.push(widget::text::heading("Show in panel"));
+        for (index, label) in RESOURCES.into_iter().enumerate() {
+            content = content.push(widget::settings::item(
+                label,
+                widget::toggler(self.settings.visible[index])
+                    .on_toggle(move |enabled| Message::ResourceVisibility(index, enabled)),
+            ));
+        }
+        content = content.push(widget::text::caption(
+            "Unavailable readings are hidden automatically. Zero readings remain visible.",
+        ));
+        content = content.push(widget::text::heading("Individual meters"));
+        for (key, label) in METERS {
+            content = content.push(widget::settings::item(
+                label,
+                widget::toggler(
+                    !self
+                        .settings
+                        .hidden_metrics
+                        .iter()
+                        .any(|hidden| hidden == key),
+                )
+                .on_toggle(move |enabled| Message::MetricVisibility(key.into(), enabled)),
+            ));
+        }
+        content = content.push(widget::text::heading("Disk mounts"));
+        let mut mounts = std::collections::BTreeSet::new();
+        mounts.extend(self.settings.selected_mounts().iter().cloned());
+        if let Some(snapshot) = &self.snapshot {
+            mounts.extend(snapshot.disks.keys().cloned());
+        }
+        for mount in mounts {
+            let available = self
+                .snapshot
+                .as_ref()
+                .is_some_and(|s| s.disks.contains_key(&mount));
+            let label = if available {
+                mount.clone()
+            } else {
+                format!("{mount} (unavailable)")
+            };
+            let selected = self.settings.selected_mounts().contains(&mount);
+            content = content.push(widget::settings::item(
+                label,
+                widget::toggler(selected)
+                    .on_toggle(move |enabled| Message::MountVisibility(mount.clone(), enabled)),
+            ));
+        }
         let choices = [
             (CpuGraph::Cores, "Cores"),
             (CpuGraph::History, "History"),
@@ -296,13 +379,14 @@ impl App {
 
 /// Embedded outline marks render independently of the installed icon theme.
 fn resource_icon(name: &str, size: f32) -> Element<'static, Message> {
-    static ICONS: [std::sync::OnceLock<Handle>; 6] = [const { std::sync::OnceLock::new() }; 6];
+    static ICONS: [std::sync::OnceLock<Handle>; 7] = [const { std::sync::OnceLock::new() }; 7];
     let index = match name {
         "processor-symbolic" => 0,
         "memory-symbolic" => 1,
         "swap-symbolic" => 2,
         "network-wired-symbolic" => 3,
         "video-display-symbolic" => 4,
+        "view-grid-symbolic" => 6,
         _ => 5,
     };
     let handle = ICONS[index].get_or_init(|| make_icon(name));
@@ -325,6 +409,9 @@ fn make_icon(name: &str) -> Handle {
         "network-wired-symbolic" => r#"<path d="M7 3v17m-4-4 4 4 4-4M17 21V4m-4 4 4-4 4 4"/>"#,
         "video-display-symbolic" => {
             r#"<rect x="3" y="3" width="18" height="14" rx="2"/><path d="M12 17v4m-5 0h10"/>"#
+        }
+        "view-grid-symbolic" => {
+            r#"<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/>"#
         }
         _ => {
             r#"<rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="10" r="3"/><path d="M8 17h8"/>"#
@@ -381,30 +468,116 @@ mod tests {
     }
     #[test]
     fn each_core_and_gpu_memory_have_independent_meters() {
-        let groups = app().groups();
+        let groups = app().panel_groups();
         assert_eq!(groups[0].values, vec![Some(10.0), Some(80.0), Some(99.0)]);
         assert_eq!(groups[1].values, vec![Some(50.0)]);
-        assert_eq!(groups[2].values, vec![None]);
-        assert_eq!(groups[5].values, vec![Some(85.0), Some(75.0)]);
+        assert!(!groups.iter().any(|g| g.resource == 2));
+        assert_eq!(groups[4].values, vec![Some(85.0), Some(75.0)]);
     }
     #[test]
     fn selected_interface_and_configured_scale_control_rates() {
         let mut app = app();
         app.settings.interface = "eth0".into();
         app.settings.network_mib = 1;
-        assert_eq!(app.groups()[3].values, vec![Some(100.0), Some(50.0)]);
+        assert_eq!(app.panel_groups()[2].values, vec![Some(100.0), Some(50.0)]);
         app.settings.interface = "unplugged".into();
-        assert_eq!(app.groups()[3].values, vec![None, None]);
+        assert!(!app.panel_groups().iter().any(|g| g.resource == 3));
         app.settings.mount = "/unmounted".into();
-        assert_eq!(app.groups()[4].values, vec![None; 3]);
+        assert!(!app.panel_groups().iter().any(|g| g.resource == 4));
     }
     #[test]
     fn visibility_does_not_change_other_metrics() {
         let mut app = app();
         app.settings.visible[0] = false;
-        assert_eq!(app.groups()[0].label, "RAM");
+        assert_eq!(app.panel_groups()[0].label, "RAM");
         app.settings.visible = vec![false; 6];
-        assert!(app.groups().is_empty());
+        assert!(app.panel_groups().is_empty());
+    }
+    #[test]
+    fn individual_switches_mask_only_the_selected_meter() {
+        for (resource, keys) in [
+            (3, vec!["network-down", "network-up"]),
+            (4, vec!["disk-space", "disk-read", "disk-write"]),
+            (5, vec!["gpu-usage", "gpu-memory"]),
+        ] {
+            for (slot, key) in keys.iter().enumerate() {
+                let mut app = app();
+                let original = app
+                    .panel_groups()
+                    .into_iter()
+                    .find(|g| g.resource == resource)
+                    .unwrap()
+                    .values;
+                app.settings.hidden_metrics = vec![(*key).into()];
+                let values = app
+                    .panel_groups()
+                    .into_iter()
+                    .find(|g| g.resource == resource)
+                    .unwrap()
+                    .values;
+                for (i, value) in values.iter().enumerate() {
+                    assert_eq!(*value, if i == slot { None } else { original[i] });
+                }
+                app.settings.visible[resource] = false;
+                assert!(!app.panel_groups().iter().any(|g| g.resource == resource));
+            }
+        }
+    }
+    #[test]
+    fn missing_sensors_hide_groups_and_partial_readings_keep_their_slots() {
+        let mut app = app();
+        let snapshot = Arc::make_mut(app.snapshot.as_mut().unwrap());
+        snapshot.gpus[0].busy = None;
+        snapshot.gpus[0].memory = None;
+        snapshot.disks.get_mut("/").unwrap().read_write = None;
+        assert!(!app.panel_groups().iter().any(|g| g.resource == 5));
+        assert_eq!(
+            app.panel_groups()
+                .iter()
+                .find(|g| g.resource == 4)
+                .unwrap()
+                .values,
+            vec![Some(75.0), None, None]
+        );
+        let snapshot = Arc::make_mut(app.snapshot.as_mut().unwrap());
+        snapshot.gpus[0].busy = Some(0.0);
+        assert_eq!(
+            app.panel_groups().last().unwrap().values,
+            vec![Some(0.0), None]
+        );
+        app.settings.hidden_metrics = vec!["gpu-usage".into(), "disk-space".into()];
+        assert!(!app.panel_groups().iter().any(|g| g.resource >= 4));
+        assert!(app.groups().iter().any(|g| g.resource == 5));
+        app.snapshot = None;
+        assert!(app.panel_groups().is_empty());
+    }
+    #[test]
+    fn mounts_have_independent_keys_and_unmounted_selections_recover() {
+        let mut app = app();
+        app.settings.mounts = Some(vec!["/".into(), "/home".into()]);
+        assert_eq!(
+            app.panel_groups()
+                .iter()
+                .filter(|g| g.resource == 4)
+                .count(),
+            1
+        );
+        Arc::make_mut(app.snapshot.as_mut().unwrap()).disks.insert(
+            "/home".into(),
+            Disk {
+                used: 20,
+                total: 100,
+                read_write: Some((0.0, 0.0)),
+            },
+        );
+        let groups = app.panel_groups();
+        let disks: Vec<_> = groups.iter().filter(|g| g.resource == 4).collect();
+        assert_eq!(disks.len(), 2);
+        assert_eq!(disks[0].key, "disk:/");
+        assert_eq!(disks[1].key, "disk:/home");
+        assert_eq!(disks[1].values, vec![Some(20.0), Some(0.0), Some(0.0)]);
+        app.settings.mounts = Some(Vec::new());
+        assert!(!app.panel_groups().iter().any(|g| g.resource == 4));
     }
     #[test]
     fn popup_graph_controls_appear_once_even_with_multiple_or_hidden_resources() {
